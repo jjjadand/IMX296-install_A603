@@ -1,0 +1,50 @@
+IMX296LQ preview (A603 / JetPack 6.2)
+
+Do not use: gst-launch-1.0 v4l2src ! video/x-bayer ...
+JetPack 6.2 GStreamer 1.20 cannot map V4L2 RG10, so that pipeline fails
+with not-negotiated. Live view goes through camview: RGGB bilinear demosaic
+plus a small CPU ISP (black level, grey-world AWB on the RPi ct curve, CCM,
+highlight recovery, Bayer-zipper desaturation, RPi gamma).
+
+On the Jetson desktop:
+
+  view-imx296
+
+Defaults are indoor-friendly: 10000 us, gain=80 (8 dB), 60 fps, phase=rggb.
+If color is still wrong, try:
+
+  view-imx296 gbrg
+  view-imx296 grbg
+  view-imx296 bggr
+
+Disable ISP (demosaic + gamma only):
+
+  CAMVIEW_ISP=0 view-imx296
+
+Exposure / gain:
+
+  EXPOSURE=2000 GAIN=0 view-imx296          # bright lamp / outdoor
+  EXPOSURE=15699 GAIN=160 view-imx296       # darker room
+  FPS=30 EXPOSURE=8000 view-imx296
+
+Range: exposure 15-15700 us, gain 0-480 (0.1 dB steps, 48 dB max).
+CPU ISP on Orin NX: ~60 fps before 1.1.2, ~43 fps with the 3x3 zipper
+suppressor at 1456x1088. CAMVIEW_ISP=0 is demosaic+gamma only.
+
+Clipped fluorescent tubes: hl_start/hl_full fade the core toward white
+(default 780..940). Cyan/orange zipper on the tube edge is fc_* toward luma
+(default 220..500, ratio 250..650). Do not lower hl_start to kill zipper —
+that paints a white halo.
+
+Manual equivalent:
+
+v4l2-ctl -d /dev/video0 -c override_enable=1,gain=80,exposure=10000,frame_rate=60000000
+camview /dev/video0 rggb | gst-launch-1.0 fdsrc ! \
+  rawvideoparse format=rgb width=1456 height=1088 framerate=60/1 ! \
+  videoconvert ! gtksink sync=false
+
+ISP tables live in /usr/share/imx296-a603/imx296-isp.json
+(override: /etc/imx296-a603/imx296-isp.json or CAMVIEW_ISP_FILE).
+view-imx296 and stream-imx296 both run camview, so they share this file.
+
+Full carrier-porting notes: /usr/share/doc/leetop-a603-imx296lq-camera/PORTING.md

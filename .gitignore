@@ -1,0 +1,10 @@
+*.tmp
+*.swp
+*~
+.DS_Store
+driver/tegracam/.*.cmd
+driver/tegracam/*.o
+driver/tegracam/*.mod
+driver/tegracam/*.mod.c
+driver/tegracam/modules.order
+driver/tegracam/Module.symvers

@@ -1,0 +1,17 @@
+#!/bin/bash
+# IMX296LQ color live view (V4L2 path, no Argus/NITO dependency)
+# JetPack 6.2 GStreamer cannot map RG10, so this pipes camview RGB into gtksink.
+# camview default CFA is RGGB + CPU ISP from /usr/share/imx296-a603/imx296-isp.json
+# CAMVIEW_ISP=0 disables AWB/CCM; CAMVIEW_ISP_FILE=... overrides the tables.
+DEV=$(for d in /dev/video*; do grep -q imx296 /sys/class/video4linux/$(basename $d)/name 2>/dev/null && echo $d; done | head -1)
+[ -z "$DEV" ] && { echo "no imx296 node found (overlay not applied / camera not plugged?)"; exit 1; }
+PHASE=${1:-rggb}
+EXPOSURE=${EXPOSURE:-10000}
+GAIN=${GAIN:-80}
+FPS=${FPS:-60}
+echo "imx296lq -> $DEV  (gain=${GAIN} exposure=${EXPOSURE}us fps=${FPS} phase=${PHASE}; exposure 15-15700, gain 0-480)"
+v4l2-ctl -d "$DEV" -c override_enable=1,bypass_mode=0,gain=${GAIN},exposure=${EXPOSURE},frame_rate=$((FPS * 1000000)) 2>/dev/null || \
+  v4l2-ctl -d "$DEV" -c exposure=${EXPOSURE},gain=${GAIN} 2>/dev/null
+camview "$DEV" "$PHASE" | gst-launch-1.0 fdsrc ! \
+  rawvideoparse format=rgb width=1456 height=1088 framerate=${FPS}/1 ! \
+  videoconvert ! gtksink sync=false

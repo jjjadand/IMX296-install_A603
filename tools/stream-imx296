@@ -1,0 +1,231 @@
+#!/bin/bash
+# IMX296LQ V4L2 stream helper for JetPack 6.2. Does not use Argus.
+set -euo pipefail
+
+usage() {
+	cat <<'EOF'
+Usage: stream-imx296 [options]
+
+Push IMX296LQ over V4L2. Default is H.264 MPEG-TS on TCP port 8554.
+
+Options:
+  --device PATH       V4L2 node (auto-detect first imx296)
+  --index N           Nth imx296 node (0=CAM0/A603 15-pin CSI)
+  --protocol tcp|udp  TCP MPEG-TS (default) or UDP MPEG-TS
+  --host ADDR         TCP bind / UDP destination
+                      (tcp default 0.0.0.0, udp default 192.168.7.1)
+  --port N            Port (default 8554)
+  --bitrate N         H.264 bitrate in bps (default 4000000)
+  --fps N             Framerate (default 60)
+  --exposure US       Exposure in microseconds (default 10000)
+  --gain N            Analog gain 0-480, 0.1 dB steps (default 80)
+  --width N           Width (default 1456)
+  --height N          Height (default 1088)
+  --phase CFA          Bayer phase (default rggb)
+  --no-hw             Use x264enc instead of nvv4l2h264enc
+  --preview           Also open a local GTK preview
+  --list              List imx296 V4L2 nodes and exit
+  -h, --help          Show this help
+
+Watch from another machine:
+  vlc tcp://192.168.7.227:8554
+  ffplay tcp://192.168.7.227:8554
+
+UDP example:
+  stream-imx296 --protocol udp --host 192.168.7.1 --port 5000
+  ffplay udp://@:5000
+
+A603 has a single 15-pin CSI camera.
+EOF
+}
+
+die() { echo "stream-imx296: $*" >&2; exit 1; }
+
+list_imx296_nodes() {
+	local d name
+	for d in /dev/video*; do
+		[[ -e "$d" ]] || continue
+		name=$(cat "/sys/class/video4linux/$(basename "$d")/name" 2>/dev/null || true)
+		if [[ "$name" == *imx296* ]]; then
+			printf '%s\n' "$d"
+		fi
+	done
+}
+
+DEVICE=""
+INDEX=""
+PROTOCOL="tcp"
+HOST=""
+PORT="8554"
+BITRATE="4000000"
+FPS="60"
+EXPOSURE="10000"
+GAIN="80"
+WIDTH="1456"
+HEIGHT="1088"
+PHASE="${PHASE:-rggb}"
+USE_HW="1"
+PREVIEW="0"
+LIST_ONLY="0"
+
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+		--device)
+			[[ $# -ge 2 ]] || die "--device needs a path"
+			DEVICE=$2; shift 2 ;;
+		--index)
+			[[ $# -ge 2 ]] || die "--index needs a number"
+			INDEX=$2; shift 2 ;;
+		--protocol)
+			[[ $# -ge 2 ]] || die "--protocol needs tcp or udp"
+			PROTOCOL=$2; shift 2 ;;
+		--host)
+			[[ $# -ge 2 ]] || die "--host needs an address"
+			HOST=$2; shift 2 ;;
+		--port)
+			[[ $# -ge 2 ]] || die "--port needs a number"
+			PORT=$2; shift 2 ;;
+		--bitrate)
+			[[ $# -ge 2 ]] || die "--bitrate needs a number"
+			BITRATE=$2; shift 2 ;;
+		--fps)
+			[[ $# -ge 2 ]] || die "--fps needs a number"
+			FPS=$2; shift 2 ;;
+		--exposure)
+			[[ $# -ge 2 ]] || die "--exposure needs a number"
+			EXPOSURE=$2; shift 2 ;;
+		--gain)
+			[[ $# -ge 2 ]] || die "--gain needs a number"
+			GAIN=$2; shift 2 ;;
+		--width)
+			[[ $# -ge 2 ]] || die "--width needs a number"
+			WIDTH=$2; shift 2 ;;
+		--height)
+			[[ $# -ge 2 ]] || die "--height needs a number"
+			HEIGHT=$2; shift 2 ;;
+		--phase)
+			[[ $# -ge 2 ]] || die "--phase needs rggb|gbrg|grbg|bggr|mono"
+			PHASE=$2; shift 2 ;;
+		--no-hw) USE_HW=0; shift ;;
+		--preview) PREVIEW=1; shift ;;
+		--list) LIST_ONLY=1; shift ;;
+		-h|--help) usage; exit 0 ;;
+		*) die "unknown option: $1" ;;
+	esac
+done
+
+mapfile -t NODES < <(list_imx296_nodes)
+if [[ "$LIST_ONLY" == 1 ]]; then
+	if [[ ${#NODES[@]} -eq 0 ]]; then
+		echo "no imx296 nodes"
+		exit 1
+	fi
+	idx=0
+	for d in "${NODES[@]}"; do
+		name=$(cat "/sys/class/video4linux/$(basename "$d")/name" 2>/dev/null || echo unknown)
+		printf '%d %s %s\n' "$idx" "$d" "$name"
+		idx=$((idx + 1))
+	done
+	exit 0
+fi
+
+command -v camview >/dev/null || die "missing camview"
+command -v gst-launch-1.0 >/dev/null || die "missing gst-launch-1.0"
+command -v v4l2-ctl >/dev/null || die "missing v4l2-ctl"
+
+[[ ${#NODES[@]} -gt 0 ]] || die "no imx296 node found (overlay not applied / camera not plugged?)"
+
+if [[ -n "$DEVICE" ]]; then
+	[[ -e "$DEVICE" ]] || die "device not found: $DEVICE"
+elif [[ -n "$INDEX" ]]; then
+	[[ "$INDEX" =~ ^[0-9]+$ ]] || die "--index must be an integer"
+	(( INDEX < ${#NODES[@]} )) || die "--index $INDEX out of range (found ${#NODES[@]} imx296 node(s))"
+	DEVICE=${NODES[$INDEX]}
+else
+	DEVICE=${NODES[0]}
+fi
+
+case "$PROTOCOL" in
+	tcp|udp) ;;
+	*) die "unsupported protocol: $PROTOCOL (use tcp or udp)" ;;
+esac
+
+if [[ -z "$HOST" ]]; then
+	if [[ "$PROTOCOL" == "tcp" ]]; then
+		HOST="0.0.0.0"
+	else
+		HOST="192.168.7.1"
+	fi
+fi
+
+ENCODER_NAME="x264enc"
+GST_ENC=()
+if [[ "$USE_HW" == 1 ]] && gst-inspect-1.0 nvv4l2h264enc >/dev/null 2>&1; then
+	GST_ENC=(
+		videoconvert
+		! "video/x-raw,format=I420"
+		! nvvidconv
+		! "video/x-raw(memory:NVMM),format=NV12"
+		! nvv4l2h264enc bitrate="${BITRATE}" insert-sps-pps=true iframeinterval="${FPS}"
+		! h264parse
+	)
+	ENCODER_NAME="nvv4l2h264enc"
+else
+	if [[ "$USE_HW" == 1 ]]; then
+		echo "stream-imx296: nvv4l2h264enc not found, falling back to x264enc" >&2
+	fi
+	gst-inspect-1.0 x264enc >/dev/null 2>&1 || die "x264enc plugin missing; install gstreamer1.0-plugins-ugly or use Jetson hardware encoder"
+	GST_ENC=(
+		videoconvert
+		! x264enc tune=zerolatency speed-preset=ultrafast bitrate=$((BITRATE / 1000)) key-int-max="${FPS}"
+		! "video/x-h264,profile=baseline"
+		! h264parse
+	)
+fi
+
+v4l2-ctl -d "$DEVICE" -c "override_enable=1,bypass_mode=0,gain=${GAIN},exposure=${EXPOSURE},frame_rate=$((FPS * 1000000))" >/dev/null 2>&1 || \
+  v4l2-ctl -d "$DEVICE" -c "override_enable=1,gain=${GAIN},exposure=${EXPOSURE}" >/dev/null 2>&1 || true
+
+echo "imx296 -> ${DEVICE}  ${WIDTH}x${HEIGHT}@${FPS}  phase=${PHASE} exposure=${EXPOSURE}us gain=${GAIN}  encoder=${ENCODER_NAME}  isp=/usr/share/imx296-a603/imx296-isp.json"
+
+GST_SINK=()
+if [[ "$PROTOCOL" == "tcp" ]]; then
+	echo "TCP MPEG-TS listening on ${HOST}:${PORT}"
+	echo "Watch: vlc tcp://<jetson-ip>:${PORT}"
+	echo "   or: ffplay tcp://<jetson-ip>:${PORT}"
+	GST_SINK=(
+		mpegtsmux alignment=7
+		!
+		tcpserversink host="${HOST}" port="${PORT}" sync=false
+	)
+else
+	echo "UDP MPEG-TS to ${HOST}:${PORT}"
+	echo "Watch: vlc udp://@:${PORT}"
+	echo "   or: ffplay udp://@:${PORT}"
+	GST_SINK=(
+		mpegtsmux alignment=7
+		!
+		udpsink host="${HOST}" port="${PORT}" sync=false
+	)
+fi
+
+GST_ARGS=(
+	fdsrc
+	!
+	rawvideoparse format=rgb width="${WIDTH}" height="${HEIGHT}" framerate="${FPS}/1"
+)
+if [[ "$PREVIEW" == 1 ]]; then
+	GST_ARGS+=(
+		! tee name=t
+		t. ! queue ! videoconvert ! gtksink sync=false
+		t. ! queue
+	)
+fi
+GST_ARGS+=(
+	!
+	"${GST_ENC[@]}"
+	!
+	"${GST_SINK[@]}"
+)
+
+camview "$DEVICE" "$PHASE" | gst-launch-1.0 -e "${GST_ARGS[@]}"

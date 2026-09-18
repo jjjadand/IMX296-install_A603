@@ -1,0 +1,175 @@
+# 0 "/other_data/36.4.3-nvidia-devkit/Linux_for_Tegra/other_carrier_board/leetop_a603_imx296_jp62/tegra234-p3767-camera-603-imx296lq-overlay.dts"
+# 0 "<built-in>"
+# 0 "<command-line>"
+# 1 "/other_data/36.4.3-nvidia-devkit/Linux_for_Tegra/other_carrier_board/leetop_a603_imx296_jp62/tegra234-p3767-camera-603-imx296lq-overlay.dts"
+# 33 "/other_data/36.4.3-nvidia-devkit/Linux_for_Tegra/other_carrier_board/leetop_a603_imx296_jp62/tegra234-p3767-camera-603-imx296lq-overlay.dts"
+/dts-v1/;
+/plugin/;
+
+
+
+# 1 "/other_data/36.4.3-nvidia-devkit/Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public/include/platforms/dt-bindings/tegra234-p3767-0000-common.h" 1
+
+
+
+
+
+
+# 1 "/other_data/36.4.3-nvidia-devkit/Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public/include/kernel/dt-bindings/gpio/tegra234-gpio.h" 1
+# 16 "/other_data/36.4.3-nvidia-devkit/Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public/include/kernel/dt-bindings/gpio/tegra234-gpio.h"
+# 1 "/other_data/36.4.3-nvidia-devkit/Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public/include/kernel/dt-bindings/gpio/gpio.h" 1
+# 17 "/other_data/36.4.3-nvidia-devkit/Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public/include/kernel/dt-bindings/gpio/tegra234-gpio.h" 2
+# 8 "/other_data/36.4.3-nvidia-devkit/Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public/include/platforms/dt-bindings/tegra234-p3767-0000-common.h" 2
+# 39 "/other_data/36.4.3-nvidia-devkit/Linux_for_Tegra/other_carrier_board/leetop_a603_imx296_jp62/tegra234-p3767-camera-603-imx296lq-overlay.dts" 2
+
+/ {
+ overlay-name = "Camera IMX296LQ A603";
+ jetson-header-name = "Jetson 24pin CSI Connector";
+ compatible = "nvidia,p3768-0000+p3767-0000", "nvidia,p3768-0000+p3767-0001", "nvidia,p3768-0000+p3767-0003", "nvidia,p3768-0000+p3767-0004", "nvidia,p3768-0000+p3767-0005", "nvidia,p3768-0000+p3767-0000-super", "nvidia,p3768-0000+p3767-0001-super", "nvidia,p3768-0000+p3767-0003-super", "nvidia,p3768-0000+p3767-0004-super", "nvidia,p3768-0000+p3767-0005-super";
+
+ fragment-camera-imx296lq-a603@0 {
+  target-path = "/";
+  __overlay__ {
+
+   tegra-capture-vi {
+    num-channels = <1>;
+    ports {
+     port@0 {
+      endpoint {
+       port-index = <0>;
+       bus-width = <1>;
+      };
+     };
+    };
+   };
+
+   bus@0 {
+    host1x@13e00000 {
+     nvcsi@15a00000 {
+      num-channels = <1>;
+      channel@0 {
+       ports {
+        port@0 {
+         endpoint@0 {
+          port-index = <0>;
+          bus-width = <1>;
+          remote-endpoint = <&imx296_a_out0>;
+         };
+        };
+       };
+      };
+     };
+    };
+
+    i2c@3180000 {
+     #address-cells = <1>;
+     #size-cells = <0>;
+     status = "okay";
+
+     rbpcv2_imx219_a@10 {
+      status = "disabled";
+     };
+
+     imx296_a@1a {
+      compatible = "sony,imx296";
+      reg = <0x1a>;
+      devnode = "video0";
+      status = "okay";
+
+      physical_w = "4.968";
+      physical_h = "3.723";
+      sensor_model = "imx296";
+      use_sensor_mode_id = "false";
+
+
+      reset-gpios = <&gpio ((7 * 8) + 6) 0>;
+
+      mode0 {
+       mclk_khz = "54000";
+       num_lanes = "1";
+       tegra_sinterface = "serial_a";
+       phy_mode = "DPHY";
+
+       discontinuous_clk = "yes";
+       lane_polarity = "6";
+       dpcm_enable = "false";
+       cil_settletime = "0";
+
+       csi_pixel_bit_depth = "10";
+       mode_type = "bayer";
+       pixel_phase = "rggb";
+
+       active_w = "1456";
+       active_h = "1088";
+       readout_orientation = "0";
+
+       line_length = "1760";
+       inherent_gain = "1";
+       pix_clk_hz = "118800000";
+
+       gain_factor = "1";
+       min_gain_val = "0";
+       max_gain_val = "480";
+       step_gain_val = "1";
+       default_gain = "0";
+
+       min_hdr_ratio = "1";
+       max_hdr_ratio = "1";
+
+       framerate_factor = "1000000";
+       min_framerate = "1000000";
+       max_framerate = "60000000";
+       step_framerate = "1";
+       default_framerate = "60000000";
+
+       exposure_factor = "1000000";
+       min_exp_time = "15";
+       max_exp_time = "15699";
+       step_exp_time = "1";
+       default_exp_time = "10000";
+
+       embedded_metadata_height = "2";
+      };
+
+      ports {
+       #address-cells = <1>;
+       #size-cells = <0>;
+       port@0 {
+        reg = <0>;
+        imx296_a_out0: endpoint {
+         status = "okay";
+         port-index = <0>;
+         bus-width = <1>;
+         remote-endpoint = <&rbpcv2_imx219_csi_in0>;
+        };
+       };
+      };
+     };
+    };
+   };
+
+   tegra-camera-platform {
+    num_csi_lanes = <1>;
+    min_bits_per_pixel = <10>;
+    max_pixel_rate = <1188000>;
+
+    modules {
+     module0 {
+      badge = "imx296lq_front_IMX296LQ";
+      position = "front";
+      orientation = "1";
+
+      drivernode0 {
+       pcl_id = "v4l2_sensor";
+       sysfs-device-tree = "/sys/firmware/devicetree/base/bus@0/i2c@3180000/imx296_a@1a";
+      };
+
+      drivernode1 {
+       status = "disabled";
+      };
+     };
+    };
+   };
+  };
+ };
+};
