@@ -1,8 +1,6 @@
 # Leetop / Seeed A603 + IMX296LQ (color) on JetPack 6.2
 
-This is the A603 port of the J401 IMX296 tegracam package. It is for the
-**color** IMX296LQ module on the A603 **15-pin CSI** connector, not the
-monochrome IMX296LL dual-camera J401 overlay.
+It is for the **color** IMX296LQ module on the A603 **15-pin CSI** connector.
 
 NVIDIA Argus / `nvarguscamerasrc` is **not** supported (no NITO). Colour
 science is a CPU ISP shared by `view-imx296` and `stream-imx296`.
