@@ -1,4 +1,4 @@
-# Leetop / Seeed A603 + IMX296LQ (color) on JetPack 6.2
+# Seeed A603 + IMX296LQ (color) on JetPack 6.2
 
 It is for the **color** IMX296LQ module on the A603 **15-pin CSI** connector.
 
